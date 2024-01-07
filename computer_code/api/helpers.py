@@ -65,10 +65,14 @@ class Cameras:
         self.cameras.exposure = [exposure] * self.num_cameras
         self.cameras.gain = [gain] * self.num_cameras
 
+    # 摄像头读取数据函数
     def _camera_read(self):
+        # 通过pseyepy接口读取摄像头一帧数据
         frames, _ = self.cameras.read()
 
+        # 对摄像头图像进行处理
         for i in range(0, self.num_cameras):
+            # 对图像进行预处理
             frames[i] = np.rot90(frames[i], k=self.camera_params[i]["rotation"])
             frames[i] = make_square(frames[i])
             frames[i] = cv.undistort(frames[i], self.get_camera_params(i)["intrinsic_matrix"], self.get_camera_params(i)["distortion_coef"])
@@ -81,8 +85,10 @@ class Cameras:
             frames[i] = cv.filter2D(frames[i], -1, kernel)
             frames[i] = cv.cvtColor(frames[i], cv.COLOR_RGB2BGR)
 
+        # Motion Capture
         if (self.is_capturing_points):
             image_points = []
+            # 寻找图像中的光点，对应的是标记点
             for i in range(0, self.num_cameras):
                 frames[i], single_camera_image_points = self._find_dot(frames[i])
                 image_points.append(single_camera_image_points)
@@ -91,6 +97,7 @@ class Cameras:
                 if self.is_capturing_points and not self.is_triangulating_points:
                     self.socketio.emit("image-points", [x[0] for x in image_points])
                 elif self.is_triangulating_points:
+                    # 从不同图像中进行点的匹配操作
                     errors, object_points, frames = find_point_correspondance_and_object_points(image_points, self.camera_poses, frames)
 
                     # convert to world coordinates
@@ -105,6 +112,7 @@ class Cameras:
                     objects = []
                     filtered_objects = []
                     if self.is_locating_objects:
+                        # 使用卡尔曼滤波进行位置估计
                         objects = locate_objects(object_points, errors)
                         filtered_objects = self.kalman_filter.predict_location(objects)
                         
@@ -118,13 +126,15 @@ class Cameras:
                                         "vel": [round(x, 4) for x in filtered_object["vel"].tolist()]
                                     }
                                     with self.serialLock:
+                                        # 向ESP32写入数据
                                         self.ser.write(f"{filtered_object['droneIndex']}{json.dumps(serial_data)}".encode('utf-8'))
                                         time.sleep(0.001)
-                            
+                        
                         for filtered_object in filtered_objects:
                             filtered_object["vel"] = filtered_object["vel"].tolist()
                             filtered_object["pos"] = filtered_object["pos"].tolist()
                     
+                    # 通过socket发送数据
                     self.socketio.emit("object-points", {
                         "object_points": object_points.tolist(), 
                         "errors": errors.tolist(), 
@@ -133,7 +143,7 @@ class Cameras:
                     })
         
         return frames
-
+    
     def get_frames(self):
         frames = self._camera_read()
         #frames = [add_white_border(frame, 5) for frame in frames]
@@ -528,6 +538,7 @@ def camera_pose_to_serializable(camera_poses):
         camera_poses[i] = {k: v.tolist() for (k, v) in camera_poses[i].items()}
 
     return camera_poses
+
 
 def cartesian_product(x, y):
     return np.array([[x0, y0] for x0 in x for y0 in y])

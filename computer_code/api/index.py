@@ -30,12 +30,14 @@ num_objects = 2
 
 @app.route("/api/camera-stream")
 def camera_stream():
+    # 初始化Camera代码
     cameras = Cameras.instance()
     cameras.set_socketio(socketio)
     cameras.set_ser(ser)
     cameras.set_serialLock(serialLock)
     cameras.set_num_objects(num_objects)
     
+    # 定义循环不断获取新视频帧并通过socket发送
     def gen(cameras):
         frequency = 150
         loop_interval = 1.0 / frequency
@@ -49,16 +51,17 @@ def camera_stream():
             if i == 0:
                 socketio.emit("fps", {"fps": round(1/(time_now - last_run_time))})
 
+            # 计算延时时间并等待
             if time_now - last_run_time < loop_interval:
                 time.sleep(last_run_time - time_now + loop_interval)
             last_run_time = time.time()
-            frames = cameras.get_frames()
-            jpeg_frame = cv.imencode('.jpg', frames)[1].tostring()
+            frames = cameras.get_frames() # 获取图像
+            jpeg_frame = cv.imencode('.jpg', frames)[1].tostring() # 将图像编码为jpg格式
 
-            yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + jpeg_frame + b'\r\n')
+            yield (b'--frame\r\n Content-Type: image/jpeg\r\n\r\n' + jpeg_frame + b'\r\n')
 
     return Response(gen(cameras), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 @app.route("/api/trajectory-planning", methods=["POST"])
 def trajectory_planning_api():
@@ -82,6 +85,7 @@ def trajectory_planning_api():
     return json.dumps({
         "setpoints": setpoints
     })
+
 
 def plan_trajectory(start_pos, end_pos, waypoints, max_vel, max_accel, max_jerk, timestep):
     otg = Ruckig(3*num_objects, timestep, len(waypoints))  # DoFs, timestep, number of waypoints
@@ -111,6 +115,7 @@ def plan_trajectory(start_pos, end_pos, waypoints, max_vel, max_accel, max_jerk,
 
     return setpoints
 
+
 @socketio.on("arm-drone")
 def arm_drone(data):
     global cameras_init
@@ -127,6 +132,7 @@ def arm_drone(data):
         
         time.sleep(0.01)
 
+
 @socketio.on("set-drone-pid")
 def arm_drone(data):
     serial_data = {
@@ -136,6 +142,7 @@ def arm_drone(data):
         ser.write(f"{str(data['droneIndex'])}{json.dumps(serial_data)}".encode('utf-8'))
         time.sleep(0.01)
 
+
 @socketio.on("set-drone-setpoint")
 def arm_drone(data):
     serial_data = {
@@ -144,6 +151,7 @@ def arm_drone(data):
     with serialLock:
         ser.write(f"{str(data['droneIndex'])}{json.dumps(serial_data)}".encode('utf-8'))
         time.sleep(0.01)
+
 
 @socketio.on("set-drone-trim")
 def arm_drone(data):
@@ -209,11 +217,13 @@ def set_origin(data):
 
     socketio.emit("to-world-coords-matrix", {"to_world_coords_matrix": cameras.to_world_coords_matrix.tolist()})
 
+
 @socketio.on("update-camera-settings")
 def change_camera_settings(data):
     cameras = Cameras.instance()
     
     cameras.edit_settings(data["exposure"], data["gain"])
+
 
 @socketio.on("capture-points")
 def capture_points(data):
@@ -225,6 +235,7 @@ def capture_points(data):
         return
     elif (start_or_stop == "stop"):
         cameras.stop_capturing_points()
+
 
 @socketio.on("calculate-camera-pose")
 def calculate_camera_pose(data):
@@ -276,6 +287,7 @@ def calculate_camera_pose(data):
 
     socketio.emit("camera-pose", {"camera_poses": camera_pose_to_serializable(camera_poses)})
 
+
 @socketio.on("locate-objects")
 def start_or_stop_locating_objects(data):
     cameras = Cameras.instance()
@@ -286,6 +298,7 @@ def start_or_stop_locating_objects(data):
         return
     elif (start_or_stop == "stop"):
         cameras.stop_locating_objects()
+
 
 @socketio.on("determine-scale")
 def determine_scale(data):
